@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -19,6 +20,26 @@ from report import write_output_report
 from runtime_spec import extract_runtime_spec
 from selection import install_best, pick_best
 from trace_analysis import analyze_trace
+from token_analysis import summarize_token_content
+
+
+def clean_candidate_dir(log: AgentLog) -> None:
+    if os.getenv("AGENT_CLEAN_CANDIDATES", "1") == "0":
+        log.log("generation", "candidate directory cleanup disabled", {"path": CANDIDATE_DIR})
+        return
+    CANDIDATE_DIR.mkdir(parents=True, exist_ok=True)
+    removed = 0
+    for path in CANDIDATE_DIR.iterdir():
+        if path.is_file() and path.name.startswith("engine_iter_") and path.suffix == ".py":
+            path.unlink()
+            removed += 1
+        elif path.is_dir() and path.name == "__pycache__":
+            shutil.rmtree(path)
+            removed += 1
+    log.log("generation", "cleaned previous candidate artifacts", {
+        "path": CANDIDATE_DIR,
+        "removed_entries": removed,
+    })
 
 
 def main() -> None:
@@ -27,11 +48,13 @@ def main() -> None:
     log = AgentLog()
     started = time.perf_counter()
     log.log("agent", "starting automated runtime generation", {"root": ROOT, "workspace": WORKSPACE})
+    clean_candidate_dir(log)
     load_env_file(log)
 
     model_config_path, weight_dir, model_config = resolve_inputs(log)
     env_summary = probe_environment(model_config, weight_dir, log)
     trace_summary = analyze_trace(log)
+    trace_summary["token_content_profile"] = summarize_token_content(model_config, log)
     spec = extract_runtime_spec()
     log.log("spec", "extracted runtime hard constraints", spec)
 
@@ -44,6 +67,28 @@ def main() -> None:
     for candidate in deterministic_candidates[:max_candidates]:
         evaluate_candidate(candidate, model_config_path, weight_dir, model_config, device, log)
         results.append(candidate)
+
+    if len(results) < max_candidates and os.getenv("AGENT_ENABLE_TOKEN_AWARE_BRANCH", "1") != "0":
+        log.log("llm", "starting token-aware LLM optimization branch", {
+            "evaluated_candidates": len(results),
+            "max_candidates": max_candidates,
+            "raw_token_values_redacted": True,
+        })
+        token_candidate = maybe_generate_llm_candidate(
+            llm,
+            env_summary,
+            trace_summary,
+            spec,
+            results,
+            log,
+            llm_round=0,
+            branch_mode="token_aware",
+        )
+        if token_candidate is not None:
+            evaluate_candidate(token_candidate, model_config_path, weight_dir, model_config, device, log)
+            results.append(token_candidate)
+        else:
+            log.log("llm", "token-aware LLM branch did not produce a usable candidate")
 
     llm_round = 1
     while len(results) < max_candidates:

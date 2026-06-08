@@ -204,27 +204,34 @@ def score_benchmark(rows: list[dict[str, Any]]) -> float:
     def decode_tps(case_name: str) -> float:
         return float(by_case.get(case_name, {}).get("decode_tokens_per_second", 0.0) or 0.0)
 
-    case1_prefill = total_tps("case1_sessions_1_4_prefill_4x128")
+    case1_total = total_tps("case1_sessions_1_4_prefill_4x128")
     case2_total = total_tps("case2_sessions_5_8_decode_8x128x16")
     case2_decode = decode_tps("case2_sessions_5_8_decode_8x128x16")
-    case3_mixed = total_tps("case3_sessions_9_12_mixed_64_128_32")
-    case4_mixed = total_tps("case4_sessions_13_16_mixed_128_all")
+    case3_total = total_tps("case3_sessions_9_12_mixed_64_128_32")
+    case3_decode = decode_tps("case3_sessions_9_12_mixed_64_128_32")
+    case4_total = total_tps("case4_sessions_13_16_mixed_128_all")
+    case4_decode = decode_tps("case4_sessions_13_16_mixed_128_all")
 
-    if not any((case1_prefill, case2_total, case3_mixed, case4_mixed)):
+    if not any((case1_total, case2_total, case3_total, case4_total)):
         # Backward-compatible fallback for older benchmark_throughput.py output.
-        case1_prefill = total_tps("prefill")
+        case1_total = total_tps("prefill")
+        case2_total = total_tps("decode")
         case2_decode = decode_tps("decode")
-        case3_mixed = total_tps("mixed")
-        case4_mixed = case3_mixed
+        case3_total = total_tps("mixed")
+        case3_decode = decode_tps("mixed")
+        case4_total = case3_total
+        case4_decode = case3_decode
+
+    def decode_weighted_case(total: float, decode: float) -> float:
+        return decode * 0.60 + total * 0.40
 
     peak = max((float(row.get("peak_memory_mb", 0.0) or 0.0) for row in rows), default=0.0)
     memory_penalty = peak * 0.0001
     return (
-        case1_prefill * 0.20
-        + case2_total * 0.60
-        + case2_decode * 1.00
-        + case3_mixed * 1.50
-        + case4_mixed * 1.50
+        case1_total * 0.10
+        + decode_weighted_case(case2_total, case2_decode) * 0.30
+        + decode_weighted_case(case3_total, case3_decode) * 0.30
+        + decode_weighted_case(case4_total, case4_decode) * 0.30
         - memory_penalty
     )
 

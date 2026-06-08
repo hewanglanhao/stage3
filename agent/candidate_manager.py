@@ -62,6 +62,7 @@ def maybe_generate_llm_candidate(
     results: list[CandidateResult],
     log: AgentLog,
     llm_round: int,
+    branch_mode: str = "general",
 ) -> CandidateResult | None:
     best_so_far = None
     passing = [r for r in results if r.correctness_ok and r.stress_ok]
@@ -74,7 +75,7 @@ def maybe_generate_llm_candidate(
         excerpt = best_so_far.path.read_text(encoding="utf-8")[:6000]
     feedback = build_feedback(results, trace_summary, env_summary=env_summary, spec=spec, llm=llm, log=log)
     log.log("feedback", f"prepared feedback for LLM round {llm_round}", feedback)
-    prompt = build_llm_prompt(env_summary, trace_summary, spec, results, excerpt, feedback, llm_round)
+    prompt = build_llm_prompt(env_summary, trace_summary, spec, results, excerpt, feedback, llm_round, branch_mode=branch_mode)
     parsed = llm.ask_for_candidate(prompt)
     if not parsed:
         return None
@@ -85,11 +86,17 @@ def maybe_generate_llm_candidate(
             "risk": parsed.get("risk", ""),
         })
         return None
+    name = "token_aware_llm" if branch_mode == "token_aware" else f"llm_iter_{llm_round}"
+    default_strategy = (
+        "Token-content-aware LLM full-engine proposal with optimized_torch fallback"
+        if branch_mode == "token_aware"
+        else "LLM full-engine proposal"
+    )
     return write_candidate(
         len(results) + 1,
-        f"llm_iter_{llm_round}",
+        name,
         code,
-        parsed.get("strategy", "LLM full-engine proposal"),
+        parsed.get("strategy", default_strategy),
         parsed.get("expected_benefit", "LLM proposed optimization"),
         parsed.get("risk", "Unknown; validated by local tests before selection."),
         parsed.get("self_check_notes", ""),

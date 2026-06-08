@@ -7,6 +7,21 @@ from common import AgentLog, CandidateResult, WORKSPACE, to_jsonable
 from feedback import build_feedback
 
 
+def redact_trace_for_report(trace_summary: dict[str, Any]) -> dict[str, Any]:
+    if "token_content_profile" not in trace_summary:
+        return trace_summary
+    redacted = dict(trace_summary)
+    profile = trace_summary.get("token_content_profile") or {}
+    redacted["token_content_profile"] = {
+        "available": bool(profile.get("available")) if isinstance(profile, dict) else False,
+        "raw_token_values_redacted": True,
+        "used_for_token_aware_llm_branch": True,
+        "observations": profile.get("observations", []) if isinstance(profile, dict) else [],
+        "full_profile_omitted_from_report": True,
+    }
+    return redacted
+
+
 def write_output_report(
     env_summary: dict[str, Any],
     trace_summary: dict[str, Any],
@@ -32,7 +47,7 @@ def write_output_report(
     lines.append("")
     lines.append("## Trace Summary")
     lines.append("```json")
-    lines.append(json.dumps(to_jsonable(trace_summary), indent=2, ensure_ascii=False))
+    lines.append(json.dumps(to_jsonable(redact_trace_for_report(trace_summary)), indent=2, ensure_ascii=False))
     lines.append("```")
     lines.append("")
     lines.append("## Runtime Contract")

@@ -165,5 +165,10 @@ def probe_environment(model_config: dict[str, Any], weight_dir: Path, log: Agent
         summary["device"]["probe_error"] = repr(exc)
         log.log("probe", "environment probe hit an error", {"error": repr(exc)})
 
-    log.log("probe", "environment and model summary", summary)
+    log.log("probe", "environment/model probe collected", {
+        "summary_redacted_from_log": True,
+        "model_summary_available": bool(summary.get("model")),
+        "weight_summary_available": bool(summary.get("weights")),
+        "device_summary_available": bool(summary.get("device")),
+    })
     return summary

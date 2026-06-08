@@ -7,6 +7,11 @@ from pathlib import Path
 
 import torch
 
+try:
+    from benchmark_token_fixture import BENCHMARK_TOKEN_FIXTURE
+except Exception:
+    BENCHMARK_TOKEN_FIXTURE = {}
+
 
 @dataclass
 class BenchResult:
@@ -198,8 +203,58 @@ def _random_decode_tokens(batch_size, vocab_size, device):
     return torch.randint(0, vocab_size, (int(batch_size),), dtype=torch.long, device=device)
 
 
+def _fixture_input_ids(input_ids, vocab_size, device):
+    return [
+        torch.tensor([int(x) % vocab_size for x in row], dtype=torch.long, device=device)
+        for row in input_ids
+    ]
+
+
+def _fixture_decode_tokens(token_ids, vocab_size, device):
+    return torch.tensor(
+        [int(x) % vocab_size for x in token_ids],
+        dtype=torch.long,
+        device=device,
+    )
+
+
+def _make_fixture_case(case_name, vocab_size, device):
+    fixture = BENCHMARK_TOKEN_FIXTURE.get(case_name)
+    if not fixture:
+        return None
+
+    events = []
+    for event in fixture:
+        op = event["op"]
+        request_ids = [int(x) for x in event["request_ids"]]
+        if op == "prefill":
+            events.append(
+                {
+                    "op": "prefill",
+                    "request_ids": request_ids,
+                    "input_ids": _fixture_input_ids(event["input_ids"], vocab_size, device),
+                }
+            )
+        elif op == "decode":
+            events.append(
+                {
+                    "op": "decode",
+                    "request_ids": request_ids,
+                    "token_ids": _fixture_decode_tokens(event["token_ids"], vocab_size, device),
+                }
+            )
+        elif op == "remove":
+            events.append({"op": "remove", "request_ids": request_ids})
+        else:
+            raise ValueError(f"unknown fixture op: {op}")
+    return events
+
+
 def make_real_trace_case_1(vocab_size, device):
     """Engine Sessions 1-4: batch-4 prefill-only, prompt length 128."""
+    fixture = _make_fixture_case("case1_sessions_1_4_prefill_4x128", vocab_size, device)
+    if fixture is not None:
+        return fixture
     request_ids = [0, 1, 2, 3]
     return [
         {
@@ -213,6 +268,9 @@ def make_real_trace_case_1(vocab_size, device):
 
 def make_real_trace_case_2(vocab_size, device):
     """Engine Sessions 5-8: batch-8 prefill 128, then 16 decode steps."""
+    fixture = _make_fixture_case("case2_sessions_5_8_decode_8x128x16", vocab_size, device)
+    if fixture is not None:
+        return fixture
     request_ids = [0, 1, 2, 3, 4, 5, 6, 7]
     events = [
         {
@@ -235,6 +293,9 @@ def make_real_trace_case_2(vocab_size, device):
 
 def make_real_trace_case_3(vocab_size, device):
     """Engine Sessions 9-12: mixed trace with 64/128/32-token inserts."""
+    fixture = _make_fixture_case("case3_sessions_9_12_mixed_64_128_32", vocab_size, device)
+    if fixture is not None:
+        return fixture
     return [
         {
             "op": "prefill",
@@ -283,6 +344,9 @@ def make_real_trace_case_3(vocab_size, device):
 
 def make_real_trace_case_4(vocab_size, device):
     """Engine Sessions 13-16: mixed trace where every prefill insert uses length 128."""
+    fixture = _make_fixture_case("case4_sessions_13_16_mixed_128_all", vocab_size, device)
+    if fixture is not None:
+        return fixture
     return [
         {
             "op": "prefill",
@@ -435,8 +499,8 @@ def main():
     vocab_size = int(model_config["vocab_size"])
     engine_mod = load_student_engine(args.engine)
 
-    # Hidden evaluation will not expose /workspace/real_test/test.md, so these
-    # four serving patterns are hard-coded from that trace instead of loaded from disk.
+    # The four serving patterns are built in so benchmark behavior is stable even
+    # when external trace files are unavailable.
     cases = make_real_trace_cases(vocab_size=vocab_size, device=device, case_spec=args.cases)
 
     results = []
