@@ -1,0 +1,21 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Environment variables / secrets
+.env
+.env.*
+!.env.example
+doc/环境变量.txt
+**/环境变量.txt
+
+# Model weights
+target/weights/
+**/weights/*.pt
+**/weights/*.pth
+**/weights/*.bin
+**/weights/*.safetensors
