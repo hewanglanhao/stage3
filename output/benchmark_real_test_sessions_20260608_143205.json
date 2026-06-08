@@ -1,0 +1,34 @@
+{
+  "timestamp": "20260608_143205",
+  "engine": "/workspace/engine.py",
+  "trace": "/workspace/real_test/test.md",
+  "model_config": "/workspace/stage3/target/model_config.json",
+  "weight_dir": "/workspace/stage3/target/weights",
+  "device": "cuda",
+  "results": [
+    {
+      "case_name": "case1_sessions_1_4_prefill_4x128",
+      "tokens_per_second": 4756.577965581141,
+      "decode_tokens_per_second": 0.0,
+      "peak_memory_mb": 276.46630859375
+    },
+    {
+      "case_name": "case2_sessions_5_8_decode_8x128x16",
+      "tokens_per_second": 5805.964240547017,
+      "decode_tokens_per_second": 645.1071378385575,
+      "peak_memory_mb": 328.38671875
+    },
+    {
+      "case_name": "case3_sessions_9_12_mixed_64_128_32",
+      "tokens_per_second": 4526.89632607588,
+      "decode_tokens_per_second": 202.69685042130806,
+      "peak_memory_mb": 269.37548828125
+    },
+    {
+      "case_name": "case4_sessions_13_16_mixed_128_all",
+      "tokens_per_second": 8703.26517597721,
+      "decode_tokens_per_second": 199.31141624375292,
+      "peak_memory_mb": 302.388671875
+    }
+  ]
+}
