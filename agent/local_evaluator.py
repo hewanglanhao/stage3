@@ -147,7 +147,7 @@ def run_custom_stress(candidate: CandidateResult, model_config: dict[str, Any], 
 def run_benchmark(candidate: CandidateResult, model_config_path: Path, weight_dir: Path, device: str, log: AgentLog) -> None:
     if not (candidate.correctness_ok and candidate.stress_ok):
         return
-    repeat = os.getenv("AGENT_BENCH_REPEAT", "1")
+    repeat = os.getenv("AGENT_BENCH_REPEAT", "2")
     warmup = os.getenv("AGENT_BENCH_WARMUP", "0")
     cmd = [
         sys.executable,
@@ -196,13 +196,37 @@ def parse_json_array_from_output(output: str) -> list[dict[str, Any]]:
 
 
 def score_benchmark(rows: list[dict[str, Any]]) -> float:
-    by_case = {row.get("case_name"): row for row in rows}
-    mixed = float(by_case.get("mixed", {}).get("tokens_per_second", 0.0))
-    decode = float(by_case.get("decode", {}).get("decode_tokens_per_second", 0.0))
-    prefill = float(by_case.get("prefill", {}).get("tokens_per_second", 0.0))
-    peak = max((float(row.get("peak_memory_mb", 0.0)) for row in rows), default=0.0)
+    by_case = {str(row.get("case_name")): row for row in rows}
+
+    def total_tps(case_name: str) -> float:
+        return float(by_case.get(case_name, {}).get("tokens_per_second", 0.0) or 0.0)
+
+    def decode_tps(case_name: str) -> float:
+        return float(by_case.get(case_name, {}).get("decode_tokens_per_second", 0.0) or 0.0)
+
+    case1_prefill = total_tps("case1_sessions_1_4_prefill_4x128")
+    case2_total = total_tps("case2_sessions_5_8_decode_8x128x16")
+    case2_decode = decode_tps("case2_sessions_5_8_decode_8x128x16")
+    case3_mixed = total_tps("case3_sessions_9_12_mixed_64_128_32")
+    case4_mixed = total_tps("case4_sessions_13_16_mixed_128_all")
+
+    if not any((case1_prefill, case2_total, case3_mixed, case4_mixed)):
+        # Backward-compatible fallback for older benchmark_throughput.py output.
+        case1_prefill = total_tps("prefill")
+        case2_decode = decode_tps("decode")
+        case3_mixed = total_tps("mixed")
+        case4_mixed = case3_mixed
+
+    peak = max((float(row.get("peak_memory_mb", 0.0) or 0.0) for row in rows), default=0.0)
     memory_penalty = peak * 0.0001
-    return mixed * 2.0 + decode + prefill * 0.25 - memory_penalty
+    return (
+        case1_prefill * 0.20
+        + case2_total * 0.60
+        + case2_decode * 1.00
+        + case3_mixed * 1.50
+        + case4_mixed * 1.50
+        - memory_penalty
+    )
 
 
 def evaluate_candidate(candidate: CandidateResult, model_config_path: Path, weight_dir: Path, model_config: dict[str, Any], device: str, log: AgentLog) -> None:

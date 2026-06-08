@@ -38,22 +38,38 @@ def main() -> None:
     device = os.getenv("AGENT_DEVICE", "auto")
     deterministic_candidates = generate_deterministic_candidates(log)
     results: list[CandidateResult] = []
-    max_candidates = int(os.getenv("AGENT_MAX_CANDIDATES", "4"))
+    max_candidates = int(os.getenv("AGENT_MAX_CANDIDATES", "6"))
     llm = LLMClient(log)
 
     for candidate in deterministic_candidates[:max_candidates]:
         evaluate_candidate(candidate, model_config_path, weight_dir, model_config, device, log)
         results.append(candidate)
 
-    if len(results) < max_candidates:
-        llm_candidate = maybe_generate_llm_candidate(llm, env_summary, trace_summary, spec, results, log)
-        if llm_candidate is not None:
-            evaluate_candidate(llm_candidate, model_config_path, weight_dir, model_config, device, log)
-            results.append(llm_candidate)
+    llm_round = 1
+    while len(results) < max_candidates:
+        log.log("llm", f"starting LLM optimization round {llm_round}", {
+            "evaluated_candidates": len(results),
+            "max_candidates": max_candidates,
+        })
+        llm_candidate = maybe_generate_llm_candidate(
+            llm,
+            env_summary,
+            trace_summary,
+            spec,
+            results,
+            log,
+            llm_round,
+        )
+        if llm_candidate is None:
+            log.log("llm", f"stopping LLM loop at round {llm_round}; no usable candidate was produced")
+            break
+        evaluate_candidate(llm_candidate, model_config_path, weight_dir, model_config, device, log)
+        results.append(llm_candidate)
+        llm_round += 1
 
     best = pick_best(results, log)
     install_best(best, log)
-    write_output_report(env_summary, trace_summary, spec, results, best, log)
+    write_output_report(env_summary, trace_summary, spec, results, best, log, llm=llm)
     elapsed = time.perf_counter() - started
     log.log("agent", "finished automated runtime generation", {
         "elapsed_s": round(elapsed, 3),

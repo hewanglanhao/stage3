@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 from common import AgentLog, CandidateResult, WORKSPACE, to_jsonable
+from feedback import build_feedback
 
 
 def write_output_report(
@@ -13,6 +14,7 @@ def write_output_report(
     results: list[CandidateResult],
     best: CandidateResult,
     log: AgentLog,
+    llm: object | None = None,
 ) -> None:
     lines: list[str] = []
     lines.append("# Agent Runtime Generation Report")
@@ -36,6 +38,12 @@ def write_output_report(
     lines.append("## Runtime Contract")
     for item in spec:
         lines.append(f"- {item}")
+    lines.append("")
+    final_feedback = build_feedback(results, trace_summary, llm=llm, log=log)
+    lines.append("## Current Defects And Guidance")
+    lines.append("```json")
+    lines.append(json.dumps(to_jsonable(final_feedback), indent=2, ensure_ascii=False))
+    lines.append("```")
     lines.append("")
     lines.append("## Candidate Iterations")
     for result in results:

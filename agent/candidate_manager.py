@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from common import AgentLog, CANDIDATE_DIR, CandidateResult
+from feedback import build_feedback
 from llm_client import LLMClient, build_llm_prompt, extract_python_code
 from templates import render_kv_cache, render_safe_baseline
 
@@ -61,6 +61,7 @@ def maybe_generate_llm_candidate(
     spec: list[str],
     results: list[CandidateResult],
     log: AgentLog,
+    llm_round: int,
 ) -> CandidateResult | None:
     best_so_far = None
     passing = [r for r in results if r.correctness_ok and r.stress_ok]
@@ -71,7 +72,9 @@ def maybe_generate_llm_candidate(
     excerpt = ""
     if best_so_far and best_so_far.path.exists():
         excerpt = best_so_far.path.read_text(encoding="utf-8")[:6000]
-    prompt = build_llm_prompt(env_summary, trace_summary, spec, results, excerpt)
+    feedback = build_feedback(results, trace_summary, env_summary=env_summary, spec=spec, llm=llm, log=log)
+    log.log("feedback", f"prepared feedback for LLM round {llm_round}", feedback)
+    prompt = build_llm_prompt(env_summary, trace_summary, spec, results, excerpt, feedback, llm_round)
     parsed = llm.ask_for_candidate(prompt)
     if not parsed:
         return None
@@ -84,7 +87,7 @@ def maybe_generate_llm_candidate(
         return None
     return write_candidate(
         len(results) + 1,
-        "llm_candidate",
+        f"llm_iter_{llm_round}",
         code,
         parsed.get("strategy", "LLM full-engine proposal"),
         parsed.get("expected_benefit", "LLM proposed optimization"),

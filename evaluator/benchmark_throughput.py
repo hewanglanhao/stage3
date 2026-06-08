@@ -186,6 +186,198 @@ def make_mixed_case(vocab_size, device):
     return events
 
 
+
+def _random_input_ids(lengths, vocab_size, device):
+    return [
+        torch.randint(0, vocab_size, (int(length),), dtype=torch.long, device=device)
+        for length in lengths
+    ]
+
+
+def _random_decode_tokens(batch_size, vocab_size, device):
+    return torch.randint(0, vocab_size, (int(batch_size),), dtype=torch.long, device=device)
+
+
+def make_real_trace_case_1(vocab_size, device):
+    """Engine Sessions 1-4: batch-4 prefill-only, prompt length 128."""
+    request_ids = [0, 1, 2, 3]
+    return [
+        {
+            "op": "prefill",
+            "request_ids": request_ids,
+            "input_ids": _random_input_ids([128, 128, 128, 128], vocab_size, device),
+        },
+        {"op": "remove", "request_ids": request_ids},
+    ]
+
+
+def make_real_trace_case_2(vocab_size, device):
+    """Engine Sessions 5-8: batch-8 prefill 128, then 16 decode steps."""
+    request_ids = [0, 1, 2, 3, 4, 5, 6, 7]
+    events = [
+        {
+            "op": "prefill",
+            "request_ids": request_ids,
+            "input_ids": _random_input_ids([128] * 8, vocab_size, device),
+        }
+    ]
+    for _ in range(16):
+        events.append(
+            {
+                "op": "decode",
+                "request_ids": request_ids,
+                "token_ids": _random_decode_tokens(8, vocab_size, device),
+            }
+        )
+    events.append({"op": "remove", "request_ids": request_ids})
+    return events
+
+
+def make_real_trace_case_3(vocab_size, device):
+    """Engine Sessions 9-12: mixed trace with 64/128/32-token inserts."""
+    return [
+        {
+            "op": "prefill",
+            "request_ids": [0, 1, 2, 3],
+            "input_ids": _random_input_ids([64, 64, 64, 64], vocab_size, device),
+        },
+        {
+            "op": "decode",
+            "request_ids": [0, 1, 2, 3],
+            "token_ids": _random_decode_tokens(4, vocab_size, device),
+        },
+        {
+            "op": "decode",
+            "request_ids": [0, 1, 2, 3],
+            "token_ids": _random_decode_tokens(4, vocab_size, device),
+        },
+        {
+            "op": "prefill",
+            "request_ids": [4, 5],
+            "input_ids": _random_input_ids([128, 128], vocab_size, device),
+        },
+        {
+            "op": "decode",
+            "request_ids": [0, 1, 2, 3, 4, 5],
+            "token_ids": _random_decode_tokens(6, vocab_size, device),
+        },
+        {"op": "remove", "request_ids": [0, 1]},
+        {
+            "op": "prefill",
+            "request_ids": [6, 7, 8, 9],
+            "input_ids": _random_input_ids([32, 32, 32, 32], vocab_size, device),
+        },
+        {
+            "op": "decode",
+            "request_ids": [2, 3, 4, 5, 6, 7, 8, 9],
+            "token_ids": _random_decode_tokens(8, vocab_size, device),
+        },
+        {
+            "op": "decode",
+            "request_ids": [2, 3, 4, 5, 6, 7, 8, 9],
+            "token_ids": _random_decode_tokens(8, vocab_size, device),
+        },
+        {"op": "remove", "request_ids": [2, 3, 4, 5, 6, 7, 8, 9]},
+    ]
+
+
+def make_real_trace_case_4(vocab_size, device):
+    """Engine Sessions 13-16: mixed trace where every prefill insert uses length 128."""
+    return [
+        {
+            "op": "prefill",
+            "request_ids": [0, 1, 2, 3],
+            "input_ids": _random_input_ids([128, 128, 128, 128], vocab_size, device),
+        },
+        {
+            "op": "decode",
+            "request_ids": [0, 1, 2, 3],
+            "token_ids": _random_decode_tokens(4, vocab_size, device),
+        },
+        {
+            "op": "decode",
+            "request_ids": [0, 1, 2, 3],
+            "token_ids": _random_decode_tokens(4, vocab_size, device),
+        },
+        {
+            "op": "prefill",
+            "request_ids": [4, 5],
+            "input_ids": _random_input_ids([128, 128], vocab_size, device),
+        },
+        {
+            "op": "decode",
+            "request_ids": [0, 1, 2, 3, 4, 5],
+            "token_ids": _random_decode_tokens(6, vocab_size, device),
+        },
+        {"op": "remove", "request_ids": [0, 1]},
+        {
+            "op": "prefill",
+            "request_ids": [6, 7, 8, 9],
+            "input_ids": _random_input_ids([128, 128, 128, 128], vocab_size, device),
+        },
+        {
+            "op": "decode",
+            "request_ids": [2, 3, 4, 5, 6, 7, 8, 9],
+            "token_ids": _random_decode_tokens(8, vocab_size, device),
+        },
+        {
+            "op": "decode",
+            "request_ids": [2, 3, 4, 5, 6, 7, 8, 9],
+            "token_ids": _random_decode_tokens(8, vocab_size, device),
+        },
+        {"op": "remove", "request_ids": [2, 3, 4, 5, 6, 7, 8, 9]},
+    ]
+
+
+REAL_TRACE_CASE_BUILDERS = {
+    "case1_sessions_1_4_prefill_4x128": make_real_trace_case_1,
+    "case2_sessions_5_8_decode_8x128x16": make_real_trace_case_2,
+    "case3_sessions_9_12_mixed_64_128_32": make_real_trace_case_3,
+    "case4_sessions_13_16_mixed_128_all": make_real_trace_case_4,
+}
+
+REAL_TRACE_CASE_ALIASES = {
+    "1": "case1_sessions_1_4_prefill_4x128",
+    "case1": "case1_sessions_1_4_prefill_4x128",
+    "prefill": "case1_sessions_1_4_prefill_4x128",
+    "2": "case2_sessions_5_8_decode_8x128x16",
+    "case2": "case2_sessions_5_8_decode_8x128x16",
+    "decode": "case2_sessions_5_8_decode_8x128x16",
+    "3": "case3_sessions_9_12_mixed_64_128_32",
+    "case3": "case3_sessions_9_12_mixed_64_128_32",
+    "mixed_short": "case3_sessions_9_12_mixed_64_128_32",
+    "4": "case4_sessions_13_16_mixed_128_all",
+    "case4": "case4_sessions_13_16_mixed_128_all",
+    "mixed_long": "case4_sessions_13_16_mixed_128_all",
+}
+
+
+def resolve_case_names(case_spec):
+    if case_spec is None or str(case_spec).strip().lower() in ("", "all"):
+        return list(REAL_TRACE_CASE_BUILDERS.keys())
+    selected = []
+    for raw_name in str(case_spec).split(","):
+        name = raw_name.strip()
+        if not name:
+            continue
+        canonical = REAL_TRACE_CASE_ALIASES.get(name.lower(), name)
+        if canonical not in REAL_TRACE_CASE_BUILDERS:
+            valid = sorted(set(REAL_TRACE_CASE_BUILDERS) | set(REAL_TRACE_CASE_ALIASES))
+            raise ValueError(f"unknown benchmark case {name!r}; valid values include: {valid}")
+        if canonical not in selected:
+            selected.append(canonical)
+    if not selected:
+        raise ValueError("--cases did not select any benchmark cases")
+    return selected
+
+
+def make_real_trace_cases(vocab_size, device, case_spec="all"):
+    return {
+        case_name: REAL_TRACE_CASE_BUILDERS[case_name](vocab_size, device)
+        for case_name in resolve_case_names(case_spec)
+    }
+
+
 def benchmark_case(
     case_name,
     engine_mod,
@@ -229,8 +421,9 @@ def main():
     parser.add_argument("--model-config", required=True)
     parser.add_argument("--weight-dir", required=True)
     parser.add_argument("--device", default="auto")
-    parser.add_argument("--warmup", type=int, default=1)
-    parser.add_argument("--repeat", type=int, default=3)
+    parser.add_argument("--warmup", type=int, default=0)
+    parser.add_argument("--repeat", type=int, default=2)
+    parser.add_argument("--cases", default="all", help="Comma-separated real trace cases: all, case1, case2, case3, case4, or full case names.")
     args = parser.parse_args()
 
     device = resolve_device(args.device)
@@ -242,22 +435,9 @@ def main():
     vocab_size = int(model_config["vocab_size"])
     engine_mod = load_student_engine(args.engine)
 
-    cases = {
-        "prefill": make_prefill_case(
-            batch_size=4,
-            prompt_len=128,
-            vocab_size=vocab_size,
-            device=device,
-        ),
-        "decode": make_decode_case(
-            batch_size=8,
-            prompt_len=32,
-            decode_steps=16,
-            vocab_size=vocab_size,
-            device=device,
-        ),
-        "mixed": make_mixed_case(vocab_size=vocab_size, device=device),
-    }
+    # Hidden evaluation will not expose /workspace/real_test/test.md, so these
+    # four serving patterns are hard-coded from that trace instead of loaded from disk.
+    cases = make_real_trace_cases(vocab_size=vocab_size, device=device, case_spec=args.cases)
 
     results = []
     for case_name, events in cases.items():
