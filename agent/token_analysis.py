@@ -83,9 +83,10 @@ def summarize_token_content(model_config: dict[str, Any], log: AgentLog) -> dict
         "cross_case_duplicate_decode_step_ratio": duplicate_ratio(decode_signatures),
         "observations": infer_observations(case_profiles),
         "safe_token_aware_branches": [
+            "Use the redacted token profile to guide aggressive structural choices first: fused QKV projection, fused gate/up projection, and shared packed KV blocks for same-batch request groups.",
             "Use runtime input_ids content hashes to cache/reuse exact prompt states only when the full token sequence matches, with a generic fallback for all other prompts.",
-            "Use token-profile information to choose conservative cache sizes and preallocation paths without hard-coding model dimensions or request ids.",
-            "Keep the existing grouped KV-cache engine as the fallback path if a content-aware fast path misses or becomes unsafe.",
+            "Use token-profile information to choose conservative cache sizes, grouping decisions, and preallocation paths without hard-coding model dimensions or request ids.",
+            "Keep the existing grouped KV-cache engine as the fallback path if a content-aware or shared-KV fast path misses or becomes unsafe.",
         ],
         "forbidden_shortcuts": [
             "Do not hard-code logits or model outputs.",
@@ -179,5 +180,5 @@ def infer_observations(case_profiles: list[dict[str, Any]]) -> list[str]:
         observations.append("Aggregate token-id frequencies are close to uniform for the measured fixture; token values alone are unlikely to change matmul cost.")
     if no_adjacent_repeats:
         observations.append("Adjacent repeated token ids are effectively absent; repeat-token shortcuts are unlikely to help.")
-    observations.append("Content-aware candidates should focus on exact prompt/decode-sequence caches with safe fallback, while preserving the optimized KV-cache branch.")
+    observations.append("Content-aware candidates should preserve the optimized KV-cache branch, but prefer fused projections and shared packed KV blocks before attempting exact prompt/decode-sequence caches.")
     return observations
