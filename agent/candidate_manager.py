@@ -5,7 +5,7 @@ from typing import Any
 from common import AgentLog, CANDIDATE_DIR, CandidateResult
 from feedback import build_feedback
 from llm_client import LLMClient, build_llm_prompt, extract_python_code
-from templates import render_safe_baseline
+from templates import render_kv_cache
 
 
 def write_candidate(iteration: int, name: str, code: str, strategy: str, benefit: str, risk: str, llm_notes: str = "") -> CandidateResult:
@@ -27,14 +27,14 @@ def generate_deterministic_candidates(log: AgentLog) -> list[CandidateResult]:
     candidates = [
         write_candidate(
             1,
-            "safe_baseline",
-            render_safe_baseline(),
-            "Full recompute for every request using the reference math; stores token history only.",
-            "Maximum correctness safety and a reliable fallback engine.",
-            "Decode throughput is poor because every decode recomputes the whole sequence.",
+            "optimized_baseline",
+            render_kv_cache("optimized_baseline", group_decode=True, group_prefill=True),
+            "Per-layer KV cache with grouped batched prefill and decode, inference_mode, dtype-aware weights, and causal-mask reuse.",
+            "Provides a strong, correctness-tested performance baseline for decode-heavy and mixed workloads.",
+            "Per-request cache stacking and unfused projections leave room for LLM-generated fused or shared-cache optimizations.",
         ),
     ]
-    log.log("generation", "wrote safe baseline candidate", [{"name": c.name, "path": c.path} for c in candidates])
+    log.log("generation", "wrote optimized baseline candidate", [{"name": c.name, "path": c.path} for c in candidates])
     return candidates
 
 
@@ -80,7 +80,7 @@ def maybe_generate_llm_candidate(
         return None
     name = "token_aware_llm" if branch_mode == "token_aware" else f"llm_iter_{llm_round}"
     default_strategy = (
-        "Token-content-aware LLM full-engine proposal with safe baseline fallback"
+        "Token-content-aware LLM full-engine proposal with optimized baseline fallback"
         if branch_mode == "token_aware"
         else "LLM full-engine proposal"
     )

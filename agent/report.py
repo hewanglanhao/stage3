@@ -14,6 +14,18 @@ BENCHMARK_CASE_CHARACTERISTICS = [
 ]
 
 
+AGENT_ARCHITECTURE = [
+    "Environment and input probe: resolves model inputs and inspects runtime capabilities.",
+    "Trace and token analysis: characterizes the workload for optimization without exposing raw token values.",
+    "Runtime specification: converts the required engine API and state semantics into hard constraints.",
+    "Candidate generation: provides a grouped KV-cache performance baseline and asks the LLM to generate stronger runtimes.",
+    "Feedback loop: summarizes correctness and performance results to guide the next LLM candidate.",
+    "Local evaluation: runs import checks, correctness tests, request-state stress tests, and benchmarks.",
+    "Selection and fallback: keeps the highest-scoring correct candidate and never replaces it with a failed iteration.",
+    "Reporting: records the selected strategy, candidate outcomes, LLM activity, and final engine choice.",
+]
+
+
 def compact_text(value: Any) -> str:
     text = re.sub(r"```.*?```", "", str(value or ""), flags=re.S)
     return " ".join(text.replace("`", "").split())
@@ -95,6 +107,10 @@ def write_output_report(
     lines.append(f"- Selected candidate: iter {best.iteration} `{best.name}`")
     lines.append(f"- Correctness: official={best.correctness_ok}, stress={best.stress_ok}")
     lines.append(f"- Benchmark score: {best.score:.3f}")
+    lines.append("")
+    lines.append("## Agent Architecture")
+    for module_description in AGENT_ARCHITECTURE:
+        lines.append(f"- {module_description}")
     lines.append("")
     lines.append("## Environment Probe")
     lines.append("- Completed.")

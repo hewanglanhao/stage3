@@ -182,7 +182,7 @@ def build_local_feedback(results: list[CandidateResult], trace_summary: dict[str
             guidance.append(f"Observed prompt lengths include {trace_summary.get('prompt_lengths')}; preserve grouped prefill by prompt length.")
 
     if best is None:
-        guidance.append("A safe full-recompute fallback already exists; any LLM patch must pass official correctness before selection.")
+        guidance.append("A tested grouped KV-cache baseline already exists; any LLM patch must pass official correctness before selection.")
     else:
         guidance.append(f"Current best is `{best.name}` with score={best.score:.3f}; propose a full engine.py that can beat it or fix the latest failure.")
 
