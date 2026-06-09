@@ -245,25 +245,29 @@ def build_llm_prompt(
     env_summary: dict[str, Any],
     trace_summary: dict[str, Any],
     spec: list[str],
-    results: list[CandidateResult],
+    best_result: CandidateResult | None,
     best_code: str,
     feedback: dict[str, Any],
     llm_round: int,
     branch_mode: str = "general",
 ) -> str:
-    candidate_summary = [
-        {
-            "iteration": r.iteration,
-            "name": r.name,
-            "correctness_ok": r.correctness_ok,
-            "stress_ok": r.stress_ok,
-            "benchmark_ok": r.benchmark_ok,
-            "score": r.score,
-            "failure_reason": r.failure_reason[-800:],
-            "benchmark": r.benchmark,
+    best_candidate_summary = None
+    if best_result is not None:
+        best_candidate_summary = {
+            "iteration": best_result.iteration,
+            "name": best_result.name,
+            "correctness_ok": best_result.correctness_ok,
+            "stress_ok": best_result.stress_ok,
+            "benchmark_ok": best_result.benchmark_ok,
+            "score": best_result.score,
+            "failure_reason": best_result.failure_reason[-800:],
+            "benchmark": best_result.benchmark,
         }
-        for r in results
-    ]
+    feedback_for_prompt = {
+        key: value
+        for key, value in feedback.items()
+        if key not in {"candidate_table", "current_best", "latest_candidate"}
+    }
     branch_instructions = build_branch_instructions(branch_mode, trace_summary)
     prompt_trace_summary = trace_summary if branch_mode == "token_aware" else strip_token_profile(trace_summary)
     return textwrap.dedent(f"""
@@ -285,18 +289,18 @@ def build_llm_prompt(
     Runtime hard constraints:
     {json.dumps(spec, indent=2, ensure_ascii=False)}
 
-    Candidate results so far:
-    {json.dumps(to_jsonable(candidate_summary), indent=2, ensure_ascii=False)[:6000]}
+    Current best candidate result:
+    {json.dumps(to_jsonable(best_candidate_summary), indent=2, ensure_ascii=False)}
 
     LLM-summarized defects and next-step guidance from feedback.py:
-    {json.dumps(to_jsonable(feedback), indent=2, ensure_ascii=False)[:6000]}
+    {json.dumps(to_jsonable(feedback_for_prompt), indent=2, ensure_ascii=False)[:6000]}
 
     Complete current best engine.py:
     ```python
     {best_code}
     ```
 
-    Goal: use the defects/guidance above to produce the next full engine.py. Treat the complete current best engine as the implementation base and make the smallest changes needed for the proposed optimization; preserve all unchanged logic verbatim where practical. First preserve correctness, then aggressively improve decode/mixed throughput using the fused-projection and shared-KV strategy when applicable. Keep the public interface unchanged, read config dynamically, preserve request state semantics, and avoid hard-coded model dimensions. The existing safe baseline remains in the agent selection pool as a correctness fallback, so an experimental candidate must still pass local correctness before it can be selected.
+    Goal: use the defects/guidance above to produce the next full engine.py. Use the complete current best engine as a validated reference, but feel free to substantially refactor or replace its internal implementation when that can improve efficiency. Maximize the composite benchmark score, with particular emphasis on decode and mixed throughput, while preserving correctness as a hard requirement. Apply any suitable optimization strategy, including but not limited to fused projections and shared KV caching. Keep the public interface unchanged, read config dynamically, preserve request state semantics, and avoid hard-coded model dimensions. The existing safe baseline remains in the agent selection pool as a correctness fallback, so an experimental candidate must still pass local correctness before it can be selected.
 
     Return exactly this format. Provide a full engine.py implementation inside patch_or_full_engine, not a diff:
     strategy:
