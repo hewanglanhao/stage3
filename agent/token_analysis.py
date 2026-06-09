@@ -20,7 +20,7 @@ def summarize_token_content(model_config: dict[str, Any], log: AgentLog) -> dict
             "reason": "disabled_by_AGENT_TOKEN_PROFILE",
             "raw_token_values_redacted": True,
         }
-        log.log("token_analysis", "token-content profile disabled", summary)
+        log.log("token_analysis", "token-content profile disabled")
         return summary
 
     fixture = load_fixture()
@@ -30,7 +30,7 @@ def summarize_token_content(model_config: dict[str, Any], log: AgentLog) -> dict
             "reason": "no built-in benchmark token profile available",
             "raw_token_values_redacted": True,
         }
-        log.log("token_analysis", "no token-content profile available", summary)
+        log.log("token_analysis", "no token-content profile available")
         return summary
 
     vocab_size = int(model_config.get("vocab_size", 0) or 0)
@@ -94,12 +94,7 @@ def summarize_token_content(model_config: dict[str, Any], log: AgentLog) -> dict
             "Do not print, log, or expose raw token ids.",
         ],
     }
-    log.log("token_analysis", "built redacted token-content profile for optimization", {
-        "available": True,
-        "case_count": len(case_profiles),
-        "raw_token_values_redacted": True,
-        "observations": summary["observations"],
-    })
+    log.log("token_analysis", "token-content profile prepared for internal optimization")
     return summary
 
 

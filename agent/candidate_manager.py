@@ -5,7 +5,7 @@ from typing import Any
 from common import AgentLog, CANDIDATE_DIR, CandidateResult
 from feedback import build_feedback
 from llm_client import LLMClient, build_llm_prompt, extract_python_code
-from templates import render_kv_cache, render_safe_baseline
+from templates import render_safe_baseline
 
 
 def write_candidate(iteration: int, name: str, code: str, strategy: str, benefit: str, risk: str, llm_notes: str = "") -> CandidateResult:
@@ -33,24 +33,8 @@ def generate_deterministic_candidates(log: AgentLog) -> list[CandidateResult]:
             "Maximum correctness safety and a reliable fallback engine.",
             "Decode throughput is poor because every decode recomputes the whole sequence.",
         ),
-        write_candidate(
-            2,
-            "kv_cache_torch",
-            render_kv_cache("kv_cache_torch", group_decode=False, group_prefill=True),
-            "Per-request KV cache with grouped prefill; decode computes only the new token but processes requests one by one.",
-            "Large decode speedup over full recompute while preserving simple state semantics.",
-            "Less efficient when many equal-length requests decode together because Python still loops per request.",
-        ),
-        write_candidate(
-            3,
-            "optimized_torch",
-            render_kv_cache("optimized_torch", group_decode=True, group_prefill=True),
-            "KV cache plus grouped batched prefill/decode, inference_mode, dtype-aware weights, and mask reuse.",
-            "Improves official decode and mixed traces where active requests share prompt/decode lengths.",
-            "Grouped decode must preserve logits order and correctly split variable-length active requests.",
-        ),
     ]
-    log.log("generation", "wrote deterministic runtime candidates", [{"name": c.name, "path": c.path} for c in candidates])
+    log.log("generation", "wrote safe baseline candidate", [{"name": c.name, "path": c.path} for c in candidates])
     return candidates
 
 
@@ -74,7 +58,12 @@ def maybe_generate_llm_candidate(
     if best_so_far and best_so_far.path.exists():
         excerpt = best_so_far.path.read_text(encoding="utf-8")[:6000]
     feedback = build_feedback(results, trace_summary, env_summary=env_summary, spec=spec, llm=llm, log=log)
-    log.log("feedback", f"prepared feedback for LLM round {llm_round}", feedback)
+    log.log("feedback", f"prepared feedback for LLM round {llm_round}", {
+        "priority": feedback.get("priority", ""),
+        "defect_count": len(feedback.get("defects", [])),
+        "guidance_count": len(feedback.get("guidance", [])),
+        "details_omitted": True,
+    })
     prompt = build_llm_prompt(env_summary, trace_summary, spec, results, excerpt, feedback, llm_round, branch_mode=branch_mode)
     parsed = llm.ask_for_candidate(prompt)
     if not parsed:
@@ -88,7 +77,7 @@ def maybe_generate_llm_candidate(
         return None
     name = "token_aware_llm" if branch_mode == "token_aware" else f"llm_iter_{llm_round}"
     default_strategy = (
-        "Token-content-aware LLM full-engine proposal with optimized_torch fallback"
+        "Token-content-aware LLM full-engine proposal with safe baseline fallback"
         if branch_mode == "token_aware"
         else "LLM full-engine proposal"
     )

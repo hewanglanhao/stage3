@@ -29,10 +29,7 @@ def resolve_inputs(log: AgentLog) -> tuple[Path, Path, dict[str, Any]]:
         model_config = json.load(f)
 
     ensure_weight_alias(weight_dir, log)
-    log.log("probe", "resolved model inputs", {
-        "model_config_path": model_config_path,
-        "weight_dir": weight_dir,
-    })
+    log.log("probe", "resolved model inputs")
     return model_config_path, weight_dir, model_config
 
 
@@ -48,26 +45,26 @@ def ensure_weight_alias(weight_dir: Path, log: AgentLog) -> None:
     alternatives.extend(sorted(weight_dir.glob("*.pt")))
     source = next((p for p in alternatives if p.exists()), None)
     if source is None:
-        log.log("probe", "no weight alias source found", {"weight_dir": weight_dir})
+        log.log("probe", "no weight alias source found")
         return
 
     try:
         os.link(source, canonical)
-        log.log("probe", "created hardlink weight alias", {"source": source, "alias": canonical})
+        log.log("probe", "created hardlink weight alias")
         return
     except OSError as exc:
         log.log("probe", "hardlink weight alias failed", {"error": str(exc)})
     try:
         os.symlink(source.name, canonical)
-        log.log("probe", "created symlink weight alias", {"source": source, "alias": canonical})
+        log.log("probe", "created symlink weight alias")
         return
     except OSError as exc:
         log.log("probe", "symlink weight alias failed", {"error": str(exc)})
     try:
         shutil.copy2(source, canonical)
-        log.log("probe", "copied weight alias", {"source": source, "alias": canonical})
+        log.log("probe", "copied weight alias")
     except OSError as exc:
-        log.log("probe", "could not create weight alias", {"error": str(exc), "source": source})
+        log.log("probe", "could not create weight alias", {"error": str(exc)})
 
 
 def find_weight_file(weight_dir: Path) -> Path | None:
@@ -165,10 +162,5 @@ def probe_environment(model_config: dict[str, Any], weight_dir: Path, log: Agent
         summary["device"]["probe_error"] = repr(exc)
         log.log("probe", "environment probe hit an error", {"error": repr(exc)})
 
-    log.log("probe", "environment/model probe collected", {
-        "summary_redacted_from_log": True,
-        "model_summary_available": bool(summary.get("model")),
-        "weight_summary_available": bool(summary.get("weights")),
-        "device_summary_available": bool(summary.get("device")),
-    })
+    log.log("probe", "environment probe completed")
     return summary

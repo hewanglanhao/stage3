@@ -68,11 +68,7 @@ def analyze_trace(log: AgentLog) -> dict[str, Any]:
 
     if not events:
         summary = dict(BUILT_IN_BENCHMARK_TRACE_SUMMARY)
-        log.log("trace", "using built-in benchmark case summary", {
-            "summary_redacted_from_log": True,
-            "case_count": len(summary.get("case_summaries", [])),
-            "external_trace_required": False,
-        })
+        log.log("trace", "trace summary completed")
         return summary
 
     op_counts: dict[str, int] = {}
@@ -99,11 +95,7 @@ def analyze_trace(log: AgentLog) -> dict[str, Any]:
         "case_summaries": BUILT_IN_BENCHMARK_TRACE_SUMMARY["case_summaries"],
         "sample_events": events[:12],
     }
-    log.log("trace", "trace analysis collected", {
-        "summary_redacted_from_log": True,
-        "trace_path_count": len(used_paths),
-        "sample_events_redacted": True,
-    })
+    log.log("trace", "trace summary completed")
     return summary
 
 

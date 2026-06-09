@@ -26,7 +26,7 @@ export AGENT_USE_LLM="${AGENT_USE_LLM:-1}"
 export AGENT_MAX_CANDIDATES="${AGENT_MAX_CANDIDATES:-9}"
 export AGENT_CLEAN_CANDIDATES="${AGENT_CLEAN_CANDIDATES:-1}"
 
-# Try one token-profile-aware LLM branch after deterministic candidates.
+# Try one token-profile-aware LLM branch after the deterministic baseline.
 # The prompt uses only redacted aggregate token statistics, not raw token ids.
 export AGENT_ENABLE_TOKEN_AWARE_BRANCH="${AGENT_ENABLE_TOKEN_AWARE_BRANCH:-1}"
 export AGENT_TOKEN_PROFILE="${AGENT_TOKEN_PROFILE:-1}"

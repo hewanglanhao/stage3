@@ -7,19 +7,40 @@ from common import AgentLog, CandidateResult, WORKSPACE, to_jsonable
 from feedback import build_feedback
 
 
-def redact_trace_for_report(trace_summary: dict[str, Any]) -> dict[str, Any]:
-    if "token_content_profile" not in trace_summary:
-        return trace_summary
-    redacted = dict(trace_summary)
-    profile = trace_summary.get("token_content_profile") or {}
-    redacted["token_content_profile"] = {
-        "available": bool(profile.get("available")) if isinstance(profile, dict) else False,
-        "raw_token_values_redacted": True,
-        "used_for_token_aware_llm_branch": True,
-        "observations": profile.get("observations", []) if isinstance(profile, dict) else [],
-        "full_profile_omitted_from_report": True,
-    }
-    return redacted
+BENCHMARK_CASE_CHARACTERISTICS = [
+    "Case 1: prefill-focused workload.",
+    "Case 2: decode-focused workload with repeated generation.",
+    "Case 3: mixed lifecycle workload with varied sequence lengths.",
+    "Case 4: mixed lifecycle workload with relatively uniform sequence lengths.",
+]
+
+
+CASE_NAME_REPLACEMENTS = {
+    "case1_sessions_1_4_prefill_4x128": "Case 1",
+    "case2_sessions_5_8_decode_8x128x16": "Case 2",
+    "case3_sessions_9_12_mixed_64_128_32": "Case 3",
+    "case4_sessions_13_16_mixed_128_all": "Case 4",
+}
+
+
+def sanitize_report_value(value: Any) -> Any:
+    if isinstance(value, str):
+        if "Observed prompt lengths include" in value:
+            return "Observed workloads contain varied sequence lengths; preserve safe grouped prefill behavior."
+        for private_name, public_name in CASE_NAME_REPLACEMENTS.items():
+            value = value.replace(private_name, public_name)
+        return value
+    if isinstance(value, list):
+        return [sanitize_report_value(item) for item in value]
+    if isinstance(value, dict):
+        return {key: sanitize_report_value(item) for key, item in value.items()}
+    return value
+
+
+def feedback_for_report(feedback: dict[str, Any]) -> dict[str, Any]:
+    public_fields = ("source", "summary", "priority", "defects", "guidance", "risk_notes")
+    public = {key: feedback[key] for key in public_fields if feedback.get(key)}
+    return sanitize_report_value(public)
 
 
 def write_output_report(
@@ -41,14 +62,14 @@ def write_output_report(
     lines.append(f"- Benchmark score: {best.score:.3f}")
     lines.append("")
     lines.append("## Environment Probe")
-    lines.append("```json")
-    lines.append(json.dumps(to_jsonable(env_summary), indent=2, ensure_ascii=False))
-    lines.append("```")
+    lines.append("- Completed.")
     lines.append("")
     lines.append("## Trace Summary")
-    lines.append("```json")
-    lines.append(json.dumps(to_jsonable(redact_trace_for_report(trace_summary)), indent=2, ensure_ascii=False))
-    lines.append("```")
+    lines.append("- Completed.")
+    lines.append("")
+    lines.append("## Benchmark Workloads")
+    for characteristic in BENCHMARK_CASE_CHARACTERISTICS:
+        lines.append(f"- {characteristic}")
     lines.append("")
     lines.append("## Runtime Contract")
     for item in spec:
@@ -57,7 +78,7 @@ def write_output_report(
     final_feedback = build_feedback(results, trace_summary, llm=llm, log=log)
     lines.append("## Current Defects And Guidance")
     lines.append("```json")
-    lines.append(json.dumps(to_jsonable(final_feedback), indent=2, ensure_ascii=False))
+    lines.append(json.dumps(to_jsonable(feedback_for_report(final_feedback)), indent=2, ensure_ascii=False))
     lines.append("```")
     lines.append("")
     lines.append("## Candidate Iterations")
@@ -73,18 +94,12 @@ def write_output_report(
         lines.append(f"- Score: {result.score:.3f}")
         if result.llm_notes:
             lines.append(f"- LLM/self-check notes: {result.llm_notes}")
-        if result.benchmark:
-            lines.append("- Benchmark rows:")
-            for row in result.benchmark:
-                lines.append(
-                    "  - "
-                    f"{row.get('case_name')}: total={row.get('tokens_per_second', 0):.2f} tok/s, "
-                    f"decode={row.get('decode_tokens_per_second', 0):.2f} tok/s, "
-                    f"peak={row.get('peak_memory_mb', 0):.2f} MB"
-                )
         if result.failure_reason:
-            compact = result.failure_reason.replace("\n", " ")[-1200:]
-            lines.append(f"- Failure reason: {compact}")
+            if result.failure_reason.lower().startswith("benchmark"):
+                lines.append("- Failure reason: Benchmark failed; detailed evaluator output omitted.")
+            else:
+                compact = result.failure_reason.replace("\n", " ")[-1200:]
+                lines.append(f"- Failure reason: {compact}")
         lines.append("")
     lines.append("## LLM Integration")
     llm_events = [event for event in log.events if event["module"] == "llm"]

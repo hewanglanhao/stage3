@@ -271,7 +271,7 @@ def build_llm_prompt(
     {best_code_excerpt[:5000]}
     ```
 
-    Goal: use the defects/guidance above to produce the next full engine.py. First preserve correctness, then aggressively improve decode/mixed throughput using the fused-projection and shared-KV strategy when applicable. Keep the public interface unchanged, read config dynamically, preserve request state semantics, and avoid hard-coded model dimensions. The existing optimized_torch candidate remains in the agent selection pool as a fallback, so an experimental candidate must still pass local correctness before it can be selected.
+    Goal: use the defects/guidance above to produce the next full engine.py. First preserve correctness, then aggressively improve decode/mixed throughput using the fused-projection and shared-KV strategy when applicable. Keep the public interface unchanged, read config dynamically, preserve request state semantics, and avoid hard-coded model dimensions. The existing safe baseline remains in the agent selection pool as a correctness fallback, so an experimental candidate must still pass local correctness before it can be selected.
 
     Return exactly this format. Provide a full engine.py implementation inside patch_or_full_engine, not a diff:
     strategy:

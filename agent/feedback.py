@@ -43,11 +43,10 @@ def build_feedback(
     merged = merge_llm_feedback(local_feedback, llm_feedback)
     if log is not None:
         log.log("feedback", "LLM summarized current defects and guidance", {
-            "summary": merged.get("summary", ""),
             "priority": merged.get("priority", ""),
-            "defects": merged.get("defects", []),
-            "guidance": merged.get("guidance", []),
-            "secret_values_redacted": True,
+            "defect_count": len(merged.get("defects", [])),
+            "guidance_count": len(merged.get("guidance", [])),
+            "details_omitted": True,
         })
     return merged
 

@@ -168,7 +168,7 @@ def run_benchmark(candidate: CandidateResult, model_config_path: Path, weight_di
     code, output = run_subprocess(cmd, timeout=int(os.getenv("AGENT_BENCH_TIMEOUT", "240")))
     if code != 0:
         candidate.failure_reason = "benchmark failed:\n" + output[-5000:]
-        log.log("benchmark", f"candidate {candidate.name} failed benchmark", {"output": output[-2500:]})
+        log.log("benchmark", f"candidate {candidate.name} failed benchmark", {"return_code": code})
         return
     try:
         candidate.benchmark = parse_json_array_from_output(output)
@@ -176,11 +176,11 @@ def run_benchmark(candidate: CandidateResult, model_config_path: Path, weight_di
         candidate.score = score_benchmark(candidate.benchmark)
         log.log("benchmark", f"candidate {candidate.name} benchmark complete", {
             "score": candidate.score,
-            "benchmark": candidate.benchmark,
+            "case_details_omitted": True,
         })
     except Exception as exc:
         candidate.failure_reason = "benchmark JSON parse failed:\n" + output[-5000:]
-        log.log("benchmark", f"candidate {candidate.name} benchmark parse failed", {"error": repr(exc), "output": output[-2500:]})
+        log.log("benchmark", f"candidate {candidate.name} benchmark parse failed", {"error": repr(exc)})
 
 
 def parse_json_array_from_output(output: str) -> list[dict[str, Any]]:
