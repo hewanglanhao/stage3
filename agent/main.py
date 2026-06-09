@@ -63,6 +63,8 @@ def main() -> None:
     results: list[CandidateResult] = []
     max_candidates = int(os.getenv("AGENT_MAX_CANDIDATES", "6"))
     llm = LLMClient(log)
+    max_consecutive_llm_failures = max(1, int(os.getenv("AGENT_MAX_CONSECUTIVE_LLM_FAILURES", "3")))
+    consecutive_llm_failures = 0
 
     for candidate in deterministic_candidates[:max_candidates]:
         evaluate_candidate(candidate, model_config_path, weight_dir, model_config, device, log)
@@ -87,8 +89,13 @@ def main() -> None:
         if token_candidate is not None:
             evaluate_candidate(token_candidate, model_config_path, weight_dir, model_config, device, log)
             results.append(token_candidate)
+            consecutive_llm_failures = 0
         else:
-            log.log("llm", "token-aware LLM branch did not produce a usable candidate")
+            consecutive_llm_failures += 1
+            log.log("llm", "token-aware LLM branch did not produce a usable candidate", {
+                "consecutive_failures": consecutive_llm_failures,
+                "failure_limit": max_consecutive_llm_failures,
+            })
 
     llm_round = 1
     while len(results) < max_candidates:
@@ -106,8 +113,20 @@ def main() -> None:
             llm_round,
         )
         if llm_candidate is None:
-            log.log("llm", f"stopping LLM loop at round {llm_round}; no usable candidate was produced")
-            break
+            consecutive_llm_failures += 1
+            log.log("llm", f"LLM round {llm_round} did not produce a usable candidate", {
+                "consecutive_failures": consecutive_llm_failures,
+                "failure_limit": max_consecutive_llm_failures,
+            })
+            llm_round += 1
+            if consecutive_llm_failures >= max_consecutive_llm_failures:
+                log.log("llm", "stopping LLM loop after consecutive failed rounds", {
+                    "consecutive_failures": consecutive_llm_failures,
+                    "failure_limit": max_consecutive_llm_failures,
+                })
+                break
+            continue
+        consecutive_llm_failures = 0
         evaluate_candidate(llm_candidate, model_config_path, weight_dir, model_config, device, log)
         results.append(llm_candidate)
         llm_round += 1

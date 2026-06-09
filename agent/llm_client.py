@@ -147,7 +147,7 @@ class LLMClient:
                 return obj["choices"][0]["message"]["content"]
             except urllib.error.HTTPError as exc:
                 body = exc.read().decode("utf-8", errors="ignore")
-                retryable = exc.code in {408, 409, 425, 429, 500, 502, 503, 504}
+                retryable = exc.code in {408, 409, 425, 429, 500, 502, 503, 504, 524}
                 if retryable and attempt < attempts:
                     self.log.log("llm", f"LLM request attempt {attempt} failed for {purpose}; retrying", {
                         "status": exc.code,

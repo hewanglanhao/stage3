@@ -36,6 +36,7 @@ export LLM_TIMEOUT_SECONDS="${LLM_TIMEOUT_SECONDS:-120}"
 export LLM_FEEDBACK_TIMEOUT_SECONDS="${LLM_FEEDBACK_TIMEOUT_SECONDS:-120}"
 export LLM_CANDIDATE_TIMEOUT_SECONDS="${LLM_CANDIDATE_TIMEOUT_SECONDS:-300}"
 export LLM_RETRIES="${LLM_RETRIES:-1}"
+export AGENT_MAX_CONSECUTIVE_LLM_FAILURES="${AGENT_MAX_CONSECUTIVE_LLM_FAILURES:-3}"
 
 # Benchmark controls. The four hard-coded real trace cases always run;
 # only the number of repeats is configurable here.
