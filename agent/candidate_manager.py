@@ -54,17 +54,20 @@ def maybe_generate_llm_candidate(
         best_so_far = max(passing, key=lambda r: (r.benchmark_ok, r.score))
     elif results:
         best_so_far = results[-1]
-    excerpt = ""
+    best_code = ""
     if best_so_far and best_so_far.path.exists():
-        excerpt = best_so_far.path.read_text(encoding="utf-8")[:6000]
+        best_code = best_so_far.path.read_text(encoding="utf-8")
     feedback = build_feedback(results, trace_summary, env_summary=env_summary, spec=spec, llm=llm, log=log)
     log.log("feedback", f"prepared feedback for LLM round {llm_round}", {
         "priority": feedback.get("priority", ""),
         "defect_count": len(feedback.get("defects", [])),
         "guidance_count": len(feedback.get("guidance", [])),
+        "best_candidate": best_so_far.name if best_so_far else None,
+        "best_engine_chars": len(best_code),
+        "complete_best_engine_in_prompt": True,
         "details_omitted": True,
     })
-    prompt = build_llm_prompt(env_summary, trace_summary, spec, results, excerpt, feedback, llm_round, branch_mode=branch_mode)
+    prompt = build_llm_prompt(env_summary, trace_summary, spec, results, best_code, feedback, llm_round, branch_mode=branch_mode)
     parsed = llm.ask_for_candidate(prompt)
     if not parsed:
         return None

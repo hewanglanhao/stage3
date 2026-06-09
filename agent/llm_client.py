@@ -65,6 +65,31 @@ class LLMClient:
             return None
         return parsed
 
+    def ask_for_strategy_summary(self, prompt: str) -> dict[str, Any] | None:
+        content = self._chat_completion(
+            system_prompt=(
+                "You summarize the selected LLM inference runtime optimization strategy. "
+                "Return strict JSON containing plain technical prose only. "
+                "Never include source code, pseudocode, code fences, snippets, token values, or trace details."
+            ),
+            user_prompt=prompt,
+            max_tokens=900,
+            temperature=0.1,
+            purpose="selected strategy summary",
+            timeout=self.feedback_timeout,
+        )
+        if content is None:
+            return None
+        parsed = extract_json_object(content)
+        if parsed is None:
+            self.log.log("llm", "LLM strategy summary response was not valid JSON")
+            return None
+        self.log.log("llm", "received selected strategy summary", {
+            "technique_count": len(parsed.get("techniques", [])) if isinstance(parsed.get("techniques"), list) else 0,
+            "code_content_excluded": True,
+        })
+        return parsed
+
     def _chat_completion(
         self,
         system_prompt: str,
@@ -221,7 +246,7 @@ def build_llm_prompt(
     trace_summary: dict[str, Any],
     spec: list[str],
     results: list[CandidateResult],
-    best_code_excerpt: str,
+    best_code: str,
     feedback: dict[str, Any],
     llm_round: int,
     branch_mode: str = "general",
@@ -266,12 +291,12 @@ def build_llm_prompt(
     LLM-summarized defects and next-step guidance from feedback.py:
     {json.dumps(to_jsonable(feedback), indent=2, ensure_ascii=False)[:6000]}
 
-    Current best engine excerpt:
+    Complete current best engine.py:
     ```python
-    {best_code_excerpt[:5000]}
+    {best_code}
     ```
 
-    Goal: use the defects/guidance above to produce the next full engine.py. First preserve correctness, then aggressively improve decode/mixed throughput using the fused-projection and shared-KV strategy when applicable. Keep the public interface unchanged, read config dynamically, preserve request state semantics, and avoid hard-coded model dimensions. The existing safe baseline remains in the agent selection pool as a correctness fallback, so an experimental candidate must still pass local correctness before it can be selected.
+    Goal: use the defects/guidance above to produce the next full engine.py. Treat the complete current best engine as the implementation base and make the smallest changes needed for the proposed optimization; preserve all unchanged logic verbatim where practical. First preserve correctness, then aggressively improve decode/mixed throughput using the fused-projection and shared-KV strategy when applicable. Keep the public interface unchanged, read config dynamically, preserve request state semantics, and avoid hard-coded model dimensions. The existing safe baseline remains in the agent selection pool as a correctness fallback, so an experimental candidate must still pass local correctness before it can be selected.
 
     Return exactly this format. Provide a full engine.py implementation inside patch_or_full_engine, not a diff:
     strategy:
