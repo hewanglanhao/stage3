@@ -1,12 +1,29 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+ENV_FILE="$SCRIPT_DIR/stage3/doc/环境变量.txt"
+if [[ ! -f "$ENV_FILE" ]]; then
+    echo "Missing LLM environment file: $ENV_FILE" >&2
+    exit 1
+fi
+
+# Load this file explicitly so its model/API settings override any values
+# inherited from the shell that launches the agent.
+# shellcheck disable=SC1090
+source <(sed 's/\r$//' "$ENV_FILE")
+export AGENT_ENV_FILE="$ENV_FILE"
+
+: "${API_KEY:?API_KEY is required in $ENV_FILE}"
+: "${BASE_MODEL:?BASE_MODEL is required in $ENV_FILE}"
+: "${BASE_URL:?BASE_URL is required in $ENV_FILE}"
 
 # Default to using the external LLM optimization round.
-# The agent loads API_KEY / BASE_URL / BASE_MODEL from stage3/doc/环境变量.txt.
+# API_KEY / BASE_URL / BASE_MODEL were loaded from ENV_FILE above.
 export AGENT_USE_LLM="${AGENT_USE_LLM:-1}"
-export AGENT_MAX_CANDIDATES="${AGENT_MAX_CANDIDATES:-6}"
+export AGENT_MAX_CANDIDATES="${AGENT_MAX_CANDIDATES:-9}"
 export AGENT_CLEAN_CANDIDATES="${AGENT_CLEAN_CANDIDATES:-1}"
 
 # Try one token-profile-aware LLM branch after deterministic candidates.
