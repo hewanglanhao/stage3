@@ -6,14 +6,7 @@ import textwrap
 from typing import Any
 
 from common import AgentLog, CandidateResult, to_jsonable
-
-
-PREFERRED_AGGRESSIVE_GUIDANCE = [
-    "When correctness is passing, prefer fused QKV projection at Engine init: concatenate q/k/v weights once, run one F.linear per layer, split q/k/v, and avoid keeping duplicate GPU copies of unfused q/k/v weights.",
-    "Fuse MLP gate/up projection weights similarly: one F.linear for gate_up, split the result, apply SiLU(gate) * up, then down projection.",
-    "Use shared packed KV cache blocks for requests produced by the same batched prefill/decode group. Track length, shared cache block, and row index per request; gather rows for decode and repack after decode.",
-    "Keep the old generic per-request KV concat path as a correctness fallback for heterogeneous cache blocks, prefill replacement, remove, and mixed-length states.",
-]
+from optimization_guidance import PREFERRED_RUNTIME_OPTIMIZATIONS
 
 
 def build_feedback(
@@ -64,18 +57,11 @@ def build_feedback_prompt(
     spec: list[str],
 ) -> str:
     return textwrap.dedent(f"""
-    You are summarizing the current defects of an automatically generated LLM inference runtime.
-    The local evaluator has already run correctness/stress/benchmark. Your job is not to write code.
-    Your job is to produce concise, actionable defects and guidance for the next engine-generation prompt.
-
-    Hard priorities:
-    1. If correctness or request-state stress failed, guidance must focus only on fixing correctness.
-    2. If correctness passed, compare benchmark rows and identify the main throughput bottleneck.
-    3. Guidance must preserve create_engine/prefill/decode/remove and dynamic config loading.
-    4. Do not recommend hard-coding model dimensions or request ids.
-
-    Preferred aggressive guidance when correctness is passing:
-    {json.dumps(PREFERRED_AGGRESSIVE_GUIDANCE, indent=2, ensure_ascii=False)}
+    Summarize evaluator findings into concise guidance; do not write code.
+    If correctness/stress failed, discuss only that failure. Otherwise identify the measured
+    bottleneck and recommend absent improvements from this ordered list. Preserve the public API,
+    dynamic config, and request semantics; never recommend hard-coded dimensions or request ids.
+    {json.dumps(PREFERRED_RUNTIME_OPTIMIZATIONS, indent=2, ensure_ascii=False)}
 
     Runtime spec:
     {json.dumps(to_jsonable(spec), indent=2, ensure_ascii=False)[:2500]}
@@ -173,8 +159,8 @@ def build_local_feedback(results: list[CandidateResult], trace_summary: dict[str
             defects.append(bottleneck)
 
         guidance.append("Do not regress correctness; keep create_engine/prefill/decode/remove signatures unchanged.")
-        guidance.append("Prefer aggressive but locally checkable runtime changes that improve mixed and decode throughput, especially fused QKV projection and fused gate/up projection built once at Engine init.")
-        guidance.append("For decode-heavy or mixed traces, try shared packed KV cache blocks for requests from the same batch; track per-request row indices and keep a generic fallback for heterogeneous states.")
+        guidance.append("Check the ordered optimization priorities and recommend only items absent from the current best; SDPA and last-token-only lm_head come first.")
+        guidance.append("Then consider fused QKV/gate-up, layer weight bundles, and RoPE tables; shared packed KV is lower priority and requires measured KV overhead.")
         guidance.append("Use config-derived dimensions only; never hard-code hidden model parameters.")
         if trace_summary.get("max_decode_step_seen", 0):
             guidance.append("Observed traces include repeated decode after prefill, so KV cache and batched equal-length decode are high-value paths.")

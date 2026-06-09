@@ -10,6 +10,7 @@ import urllib.request
 from typing import Any
 
 from common import AgentLog, CandidateResult, to_jsonable
+from optimization_guidance import PREFERRED_RUNTIME_STRATEGY
 
 
 class LLMClient:
@@ -229,18 +230,6 @@ def extract_python_code(text: str) -> str | None:
     return None
 
 
-AGGRESSIVE_RUNTIME_STRATEGY = textwrap.dedent("""
-Preferred aggressive optimization path once correctness is already passing:
-- Fuse q/k/v projection weights during Engine initialization, run one F.linear per layer for QKV, then split into q/k/v views. Remove or avoid duplicate GPU copies of the original q/k/v weights after the fused weight is built.
-- Fuse gate/up projection weights during Engine initialization, run one F.linear for the MLP input projection, then split gate/up before SiLU multiplication and down projection.
-- Keep the existing correct KV-cache implementation as a fallback, but prefer a shared packed KV block for requests that came from the same batched prefill/decode group. RequestState may track length, a shared cache block, and row index.
-- In decode, if active requests share the same cache block, gather rows with index_select or use the whole block directly instead of concatenating many per-request slices. Fall back to the generic slice/concat path for heterogeneous cache blocks.
-- After batched decode, repack selected requests into one updated shared cache block and update each RequestState row, while preserving request_ids output order.
-- Preserve prefill replacement, remove semantics, non-contiguous/unsorted request ids, mixed prompt lengths, RoPE positions, dtype behavior, and dynamic config-derived dimensions.
-- Implement fused projections first, then shared KV packing. If a risky optimization complicates correctness, keep it behind the proven fallback path.
-""").strip()
-
-
 def build_llm_prompt(
     env_summary: dict[str, Any],
     trace_summary: dict[str, Any],
@@ -277,8 +266,8 @@ def build_llm_prompt(
     Branch-specific instructions:
     {branch_instructions}
 
-    Preferred aggressive runtime strategy:
-    {AGGRESSIVE_RUNTIME_STRATEGY}
+    Preferred runtime optimization priorities:
+    {PREFERRED_RUNTIME_STRATEGY}
 
     Current model/environment summary:
     {json.dumps(to_jsonable(env_summary), indent=2, ensure_ascii=False)[:5000]}
@@ -300,7 +289,7 @@ def build_llm_prompt(
     {best_code}
     ```
 
-    Goal: use the defects/guidance above to produce the next full engine.py. Use the complete current best engine as a validated reference, but feel free to substantially refactor or replace its internal implementation when that can improve efficiency. Maximize the composite benchmark score, with particular emphasis on decode and mixed throughput, while preserving correctness as a hard requirement. Apply any suitable optimization strategy, including but not limited to fused projections and shared KV caching. Keep the public interface unchanged, read config dynamically, preserve request state semantics, and avoid hard-coded model dimensions. The existing optimized grouped KV-cache baseline remains in the agent selection pool as a tested fallback, so an experimental candidate must still pass local correctness before it can be selected.
+    Goal: produce a complete engine.py that improves the composite benchmark, especially decode and mixed throughput, with correctness as a hard gate. Start from the validated best code, inspect which priorities are still absent, and make any efficient refactor; do not reimplement optimizations already present. Keep the public API, dynamic config, request-state semantics, and generic correctness fallbacks. Shared packed KV remains a later, evidence-driven experiment. The tested baseline remains available if this candidate fails.
 
     Return exactly this format. Provide a full engine.py implementation inside patch_or_full_engine, not a diff:
     strategy:
@@ -314,12 +303,8 @@ def build_llm_prompt(
 def build_branch_instructions(branch_mode: str, trace_summary: dict[str, Any]) -> str:
     if branch_mode != "token_aware":
         return textwrap.dedent("""
-        General optimization branch. Improve the current best engine using benchmark feedback,
-        without relying on token content beyond normal runtime input_ids handling.
-
-        For a performance-passing baseline, prefer structural runtime changes: fused QKV
-        projection, fused gate/up projection, and shared packed KV cache blocks for batched
-        prefill/decode groups. Keep a generic fallback path for mixed cache ownership.
+        General branch: improve the current best using benchmark feedback and the ordered
+        optimization priorities below. Do not rely on token content beyond normal input handling.
         """).strip()
 
     token_profile = trace_summary.get("token_content_profile", {})
@@ -330,17 +315,11 @@ def build_branch_instructions(branch_mode: str, trace_summary: dict[str, Any]) -
     Redacted token-content profile:
     {json.dumps(to_jsonable(token_profile), indent=2, ensure_ascii=False)[:4500]}
 
-    Allowed token-aware ideas:
-    - Combine the aggressive fused-projection/shared-KV strategy with token-profile observations; token content should guide grouping/cache sizing, not replace the model computation.
-    - Add generic exact-input content-hash caches for prefill states/logits when the same full prompt appears again; always fall back to the normal KV-cache path on cache miss.
-    - Use token-profile observations to tune preallocation/cache sizing and grouping decisions, while deriving all model dimensions from config.
-    - Branch on runtime-observed input_ids shapes and non-reversible content hashes only when the branch computes exactly the same logits and preserves request order.
-    - Keep the optimized grouped KV-cache behavior as the default path for ordinary prompts and as the fallback if shared KV ownership is heterogeneous.
-
-    Forbidden shortcuts:
-    - Do not hard-code raw token ids, logits, model outputs, hidden dimensions, or request ids.
-    - Do not print or log raw token ids.
-    - Do not return stale logits for a request unless the full prompt/token history matches exactly.
+    Token-aware rules:
+    - Use the profile only for grouping, sizing, or exact full-input hash caches; normal KV execution remains the fallback.
+    - Any content branch must produce identical logits and preserve request order.
+    - Never hard-code or log raw token ids, outputs, model dimensions, or request ids; never reuse stale logits without an exact full-history match.
+    - Shared packed KV remains lower priority and requires measured KV overhead.
     """).strip()
 
 
