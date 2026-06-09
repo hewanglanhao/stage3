@@ -67,7 +67,7 @@ def maybe_generate_llm_candidate(
         "complete_best_engine_in_prompt": True,
         "details_omitted": True,
     })
-    prompt = build_llm_prompt(env_summary, trace_summary, spec, results, best_code, feedback, llm_round, branch_mode=branch_mode)
+    prompt = build_llm_prompt(env_summary, trace_summary, spec, best_so_far, best_code, feedback, llm_round, branch_mode=branch_mode)
     parsed = llm.ask_for_candidate(prompt)
     if not parsed:
         return None
